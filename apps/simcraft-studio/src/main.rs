@@ -9,6 +9,15 @@ use simcraft_studio::{StudioApp, StudioOptions};
 
 const USAGE: &str = "SimCraft Studio\n\nusage: simcraft-studio [model.simcraft]\n\n  model.simcraft  open in the diagram canvas\n";
 
+/// Window, taskbar and Dock icon (`assets/app-icon/`).
+fn app_icon() -> egui::IconData {
+    #[cfg(target_os = "macos")]
+    let png: &[u8] = include_bytes!("../../../assets/app-icon/simcraft-macos-512.png");
+    #[cfg(not(target_os = "macos"))]
+    let png: &[u8] = include_bytes!("../../../assets/app-icon/simcraft-256.png");
+    eframe::icon_data::from_png_bytes(png).unwrap_or_default()
+}
+
 fn main() -> eframe::Result<()> {
     let mut file: Option<std::path::PathBuf> = None;
     for a in std::env::args().skip(1) {
@@ -21,6 +30,9 @@ fn main() -> eframe::Result<()> {
             s => eprintln!("unknown argument `{s}`"),
         }
     }
-    let native = eframe::NativeOptions { viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 800.0]), ..Default::default() };
+    let native = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 800.0]).with_icon(app_icon()).with_app_id("simcraft"),
+        ..Default::default()
+    };
     eframe::run_native("SimCraft Studio", native, Box::new(move |cc| Ok(Box::new(StudioApp::new(cc, StudioOptions { startup_model: file.clone() })))))
 }

@@ -1,0 +1,15 @@
+SimCraft app icon (simcraft.svg, simcraft-small.svg and every file derived from them in
+this directory: simcraft-1024.png, simcraft-macos-512.png, simcraft-*.png, simcraft.ico, hicolor/).
+
+Original artwork created for SimCraft: a clean-room dynamic systems simulation design
+depicting a closed-loop block diagram (integrator block 1/s, summing junction, gain block K),
+directional routing wires, an analytical 2nd-order step response waveform, and adaptive
+Runge–Kutta solver evaluation nodes on an engineering coordinate grid. No MathWorks material.
+Licensed under either of:
+
+  * Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+  * MIT license (https://opensource.org/licenses/MIT)
+
+at your option.
+
+Regenerate derived files with packaging/icons.sh.

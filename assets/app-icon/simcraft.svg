@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <clipPath id="tile"><rect width="512" height="512" rx="112"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <!-- Full-Bleed Tile Background in Deep Control Indigo -->
+    <rect width="512" height="512" fill="#152846"/>
+
+    <!-- Precision Technical Simulation Drafting Grid -->
+    <g stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="2.5">
+      <path d="M32 0V512M0 32H512"/>
+      <path d="M64 0V512M0 64H512"/>
+      <path d="M96 0V512M0 96H512"/>
+      <path d="M128 0V512M0 128H512"/>
+      <path d="M160 0V512M0 160H512"/>
+      <path d="M192 0V512M0 192H512"/>
+      <path d="M224 0V512M0 224H512"/>
+      <path d="M256 0V512M0 256H512"/>
+      <path d="M288 0V512M0 288H512"/>
+      <path d="M320 0V512M0 320H512"/>
+      <path d="M352 0V512M0 352H512"/>
+      <path d="M384 0V512M0 384H512"/>
+      <path d="M416 0V512M0 416H512"/>
+      <path d="M448 0V512M0 448H512"/>
+      <path d="M480 0V512M0 480H512"/>
+    </g>
+
+    <!-- Steady-State Target Equilibrium Line [y_target = 1.0] -->
+    <line x1="220" y1="104" x2="480" y2="104" stroke="#FFFFFF" stroke-opacity="0.32" stroke-width="2.5" stroke-dasharray="10 8"/>
+
+    <!-- ==================== TOP: DYNAMIC TRANSIENT RESPONSE WAVEFORM ==================== -->
+    <!-- Base Ink Contour of Underdamped Step Response -->
+    <path d="M44,168 C96,155 156,70 228,68 C290,66 325,124 365,124 C402,124 424,94 445,94 C458,94 468,104 480,104" fill="none" stroke="#17191C" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Foreground Illuminated Signal Trajectory (SimCraft Vibrant Orange) -->
+    <path d="M44,168 C96,155 156,70 228,68 C290,66 325,124 365,124 C402,124 424,94 445,94 C458,94 468,104 480,104" fill="none" stroke="#F07A3A" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Core Fine Analytical Trace -->
+    <path d="M44,168 C96,155 156,70 228,68 C290,66 325,124 365,124 C402,124 424,94 445,94 C458,94 468,104 480,104" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="8 6"/>
+
+    <!-- Adaptive Solver Evaluation Nodes (Dormand–Prince RK45 Hits) -->
+    <!-- t0: Initial condition hit -->
+    <circle cx="44" cy="168" r="8" fill="#F07A3A" stroke="#17191C" stroke-width="4.5"/>
+    <!-- t1: Fast rise acceleration node -->
+    <circle cx="132" cy="116" r="8" fill="#F4ECD8" stroke="#17191C" stroke-width="4.5"/>
+    <!-- t2: Peak Overshoot Maxima (Major hit with paper registration core) -->
+    <circle cx="228" cy="68" r="12.5" fill="#F07A3A" stroke="#17191C" stroke-width="5"/>
+    <circle cx="228" cy="68" r="4.5" fill="#F4ECD8"/>
+    <!-- t3: Inflection damping stage -->
+    <circle cx="305" cy="95" r="7.5" fill="#F4ECD8" stroke="#17191C" stroke-width="4"/>
+    <!-- t4: Underdamped Trough Minima -->
+    <circle cx="365" cy="124" r="9" fill="#F07A3A" stroke="#17191C" stroke-width="4.5"/>
+    <!-- t5: Secondary Crest hit -->
+    <circle cx="435" cy="95" r="8" fill="#F4ECD8" stroke="#17191C" stroke-width="4"/>
+    <!-- t6: Converged Equilibrium Solution -->
+    <circle cx="478" cy="104" r="10" fill="#F07A3A" stroke="#17191C" stroke-width="4.5"/>
+    <circle cx="478" cy="104" r="3.5" fill="#F4ECD8"/>
+
+    <!-- ==================== MIDDLE: CLOSED-LOOP SYSTEM ROUTING ==================== -->
+    <!-- 1. Reference Input Line -->
+    <line x1="32" y1="246" x2="68" y2="246" stroke="#17191C" stroke-width="7" stroke-linecap="round"/>
+    <polygon points="56,236 70,246 56,256" fill="#17191C" stroke="#17191C" stroke-width="2" stroke-linejoin="round"/>
+
+    <!-- 2. Forward Error Signal (Summing Junction -> Integrator Block) -->
+    <line x1="133" y1="246" x2="197" y2="246" stroke="#17191C" stroke-width="7" stroke-linecap="round"/>
+    <polygon points="183,236 197,246 183,256" fill="#17191C" stroke="#17191C" stroke-width="2" stroke-linejoin="round"/>
+
+    <!-- 3. Output State Line (Integrator Block -> Output / Branch) -->
+    <line x1="363" y1="246" x2="475" y2="246" stroke="#17191C" stroke-width="7" stroke-linecap="round"/>
+    <polygon points="460,236 475,246 460,256" fill="#17191C" stroke="#17191C" stroke-width="2" stroke-linejoin="round"/>
+    <!-- Branch Node Connection Dot -->
+    <circle cx="424" cy="246" r="8" fill="#17191C"/>
+
+    <!-- 4. Feedback Return Loop (Branch -> Drop -> Gain Block -> Rise -> Summing Junction) -->
+    <!-- Downward drop from Branch -->
+    <path d="M424,246 V396 H296" fill="none" stroke="#17191C" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- Return from Gain Block to Summing Junction bottom -->
+    <path d="M236,396 H100 V281" fill="none" stroke="#17191C" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+    <!-- Returning Feedback Arrowhead pointing into bottom of Summing Junction -->
+    <polygon points="90,293 100,278 110,293" fill="#17191C" stroke="#17191C" stroke-width="2" stroke-linejoin="round"/>
+
+    <!-- ==================== SUMMING JUNCTION [⊕] ==================== -->
+    <!-- 3D Bevel / Depth Shadow -->
+    <circle cx="106" cy="252" r="33" fill="#0A182B" stroke="#17191C" stroke-width="7"/>
+    <!-- Main Body Face in Cream Paper -->
+    <circle cx="100" cy="246" r="33" fill="#F4ECD8" stroke="#17191C" stroke-width="7"/>
+    <!-- Summing Center Crosshairs (+) -->
+    <line x1="100" y1="228" x2="100" y2="264" stroke="#17191C" stroke-width="5" stroke-linecap="round"/>
+    <line x1="82" y1="246" x2="118" y2="246" stroke="#17191C" stroke-width="5" stroke-linecap="round"/>
+    <!-- Subtractive (-) Feedback Negative Indicator at bottom quadrant -->
+    <line x1="91" y1="268" x2="109" y2="268" stroke="#F07A3A" stroke-width="4.5" stroke-linecap="round"/>
+
+    <!-- ==================== CENTRAL INTEGRATOR BLOCK [1/s] ==================== -->
+    <!-- 3D Bevel / Depth Shadow Facet -->
+    <rect x="212" y="188" width="156" height="142" rx="16" fill="#0A182B" stroke="#17191C" stroke-width="7" stroke-linejoin="round"/>
+    <!-- Main Body Face in Cream Paper -->
+    <rect x="200" y="176" width="156" height="142" rx="16" fill="#F4ECD8" stroke="#17191C" stroke-width="7" stroke-linejoin="round"/>
+
+    <!-- Block Header Calibration Strip in SimCraft Orange -->
+    <path d="M200,192 C200,183 207,176 216,176 H340 C349,176 356,183 356,192 V204 H200 Z" fill="#F07A3A" stroke="#17191C" stroke-width="7" stroke-linejoin="round"/>
+    <!-- Header Registration Pips -->
+    <circle cx="222" cy="190" r="3.5" fill="#F4ECD8"/>
+    <circle cx="237" cy="190" r="3.5" fill="#F4ECD8"/>
+
+    <!-- Input Port Pin (Blue Terminal) -->
+    <polygon points="188,238 200,246 188,254" fill="#0072BD" stroke="#17191C" stroke-width="4.5" stroke-linejoin="round"/>
+    <!-- Output Port Pin (Orange Terminal) -->
+    <polygon points="356,238 368,246 356,254" fill="#F07A3A" stroke="#17191C" stroke-width="4.5" stroke-linejoin="round"/>
+
+    <!-- Mathematical Continuous Integrator Notation: 1 / s -->
+    <!-- Numeral 1 -->
+    <path d="M270,222 L279,216 V238 M269,238 H289" fill="none" stroke="#17191C" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Fraction Division Bar -->
+    <line x1="248" y1="248" x2="308" y2="248" stroke="#17191C" stroke-width="6" stroke-linecap="round"/>
+    <!-- Laplace Variable 's' -->
+    <path d="M292,267 C290,261 285,258 278,258 C270,258 267,262 267,268 C267,275 276,277 283,280 C291,283 294,287 294,293 C294,299 288,303 278,303 C269,303 264,299 262,292" fill="none" stroke="#17191C" stroke-width="5.5" stroke-linecap="round"/>
+
+    <!-- ==================== BOTTOM: FEEDBACK GAIN BLOCK [K] ==================== -->
+    <!-- Gain Block 3D Shadow -->
+    <polygon points="304,372 244,402 304,432" fill="#0A182B" stroke="#17191C" stroke-width="7" stroke-linejoin="round"/>
+    <!-- Gain Triangle Face (pointing left in feedback direction) -->
+    <polygon points="296,366 236,396 296,426" fill="#F4ECD8" stroke="#17191C" stroke-width="7" stroke-linejoin="round"/>
+    <!-- Feedback Parameter K in Bold Ink -->
+    <path d="M273,382 V410 M286,382 L273,396 L287,410" fill="none" stroke="#17191C" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
