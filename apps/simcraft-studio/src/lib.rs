@@ -42,10 +42,16 @@ fn studio_visuals() -> egui::Visuals {
 }
 
 /// Construction options for [`StudioApp`].
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct StudioOptions {
     /// A `.simcraft` file to open at startup.
     pub startup_model: Option<PathBuf>,
+    /// Run the simulation immediately after loading.
+    pub autorun: bool,
+    /// Path of block to select on startup.
+    pub select: Option<String>,
+    /// Save a window screenshot to `screenshot` and exit.
+    pub screenshot: Option<PathBuf>,
 }
 
 /// The Studio application state.
@@ -67,6 +73,8 @@ pub struct StudioApp {
     new_param: (String, String),
     traces: Vec<TraceView>,
     trace_sel: Option<usize>,
+    screenshot_path: Option<PathBuf>,
+    screenshot_frames: u32,
 }
 
 impl StudioApp {
@@ -87,9 +95,19 @@ impl StudioApp {
             new_param: (String::new(), String::new()),
             traces: Vec::new(),
             trace_sel: None,
+            screenshot_path: opts.screenshot.clone(),
+            screenshot_frames: 0,
         };
         if let Some(p) = &opts.startup_model {
             app.open_path(p.clone());
+        }
+        if let Some(s) = &opts.select {
+            if app.diagram.block(s).is_some() {
+                app.canvas.sel = Sel::Block(s.clone());
+            }
+        }
+        if (opts.autorun || opts.screenshot.is_some()) && !app.diagram.blocks.is_empty() {
+            app.run();
         }
         app
     }
@@ -513,6 +531,32 @@ impl eframe::App for StudioApp {
             } else {
                 self.canvas.param_win = None;
             }
+        }
+
+        if let Some(target) = self.screenshot_path.clone() {
+            let mut captured = false;
+            ui.ctx().input(|i| {
+                for event in &i.raw.events {
+                    if let egui::Event::Screenshot { image, .. } = event {
+                        let [w, h] = image.size;
+                        if let Err(e) = image::save_buffer(&target, image.as_raw(), w as u32, h as u32, image::ExtendedColorType::Rgba8) {
+                            eprintln!("failed to save screenshot {}: {e}", target.display());
+                        }
+                        captured = true;
+                    }
+                }
+            });
+            if captured {
+                self.screenshot_path = None;
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                return;
+            }
+
+            self.screenshot_frames += 1;
+            if self.screenshot_frames >= 2 {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+            }
+            ui.ctx().request_repaint();
         }
     }
 }

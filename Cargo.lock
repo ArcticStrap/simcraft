@@ -2238,7 +2238,7 @@ dependencies = [
 
 [[package]]
 name = "matcore"
-version = "0.1.0"
+version = "0.1.0-pre-alpha.1"
 dependencies = [
  "faer",
  "rayon",
@@ -2246,7 +2246,7 @@ dependencies = [
 
 [[package]]
 name = "matlang"
-version = "0.1.0"
+version = "0.1.0-pre-alpha.1"
 dependencies = [
  "craft-atomic",
  "flate2",
@@ -2260,7 +2260,7 @@ dependencies = [
 
 [[package]]
 name = "matplot"
-version = "0.1.0"
+version = "0.1.0-pre-alpha.1"
 dependencies = [
  "flate2",
  "fontdb",
@@ -3711,6 +3711,7 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui",
+ "image",
  "rfd",
  "serde_json",
  "simblocks",

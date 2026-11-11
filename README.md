@@ -9,19 +9,36 @@ simulation environment — the Simulink-class member of the ArtCraft family, and
 MatCraft's closest sibling. It runs natively on Windows, macOS and Linux, and on
 the web via WASM.
 
-Status: **S1–S3 working, S4 started** — `simcore` (typed graph,
+Status: **S1–S3 working, S4 in progress** — `simcore` (typed graph,
 compile-time signal propagation, algebraic-loop detection, `euler`/`rk4`
-fixed-step + adaptive `rk45` Dormand–Prince solver), `simblocks` (25
-blocks: sources, sinks, math, logic, continuous, discrete, routing),
-`simmodel` (`.simcraft` JSON), `simcraft_engine` (command session +
-MatCraft bridge: `model.*`, `block.*`, `sim.run`/`sim.step`, to-workspace
-publish), `simcraft-cli` (`run`/`check`/`blocks` + solver overrides) and
-Studio (egui palette/canvas/inspector, run + trace chart). `cargo run -p
-simcraft-cli -- run examples/pendulum.simcraft` simulates a linearized
-pendulum. Not yet: multirate/zero-crossing rigor, subsystems, M-function
-blocks, WASM.
+fixed-step + adaptive `rk45` Dormand–Prince solver with Hermite continuous
+extension and zero-crossing event localization), `simblocks` (25+
+blocks: sources, sinks, math, logic, continuous, discrete, routing, and
+hysteresis `relay`), `simmodel` (`.simcraft` JSON), `simcraft_engine` (command
+session + MatCraft bridge: `model.*`, `block.*`, `sim.run`/`sim.step`,
+to-workspace publish), `simcraft-cli` (`run`/`check`/`blocks` + solver overrides)
+and Studio (egui palette/canvas/inspector, live simulation + trace charts,
+automated screenshot capture). `cargo run --bin simcraft-studio --
+examples/relay_feedback.simcraft` simulates an Åström–Hägglund relay auto-tuner.
+Not yet: multirate discrete rigor, subsystems, M-function blocks, WASM.
 MatCraft (`../matcraft`) is the reference implementation for every shared
 convention below.
+
+## SimCraft Studio in action
+
+SimCraft Studio provides a native block-diagram editor, solver engine, block parameter inspector, and live waveform scope dock:
+
+<div align="center">
+  <img src="assets/screenshots/studio_relay_feedback.png" alt="SimCraft Studio - Åström–Hägglund Relay Feedback Auto-Tuning with RK45 Zero-Crossing Detection" width="100%">
+  <p><em>SimCraft Studio simulating the Åström–Hägglund relay feedback auto-tuner (<code>examples/relay_feedback.simcraft</code>) on plant \(G(s) = \frac{1}{(s+1)^3}\) using adaptive RK45 with continuous extension zero-crossing detection, relay hysteresis parameter inspection, and real-time limit-cycle oscillation waveforms.</em></p>
+</div>
+
+<br>
+
+<div align="center">
+  <img src="assets/screenshots/studio_pendulum.png" alt="SimCraft Studio - Linearized Pendulum Harmonic Oscillator" width="100%">
+  <p><em>Linearized harmonic pendulum model (<code>examples/pendulum.simcraft</code>) running under classical RK4 with continuous state integrator inspection and scope trace.</em></p>
+</div>
 
 ## Why it exists
 
