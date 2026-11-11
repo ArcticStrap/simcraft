@@ -17,6 +17,28 @@ pub enum SampleTime {
     Discrete(f64),
 }
 
+/// Direction of a zero-crossing trigger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ZcDirection {
+    /// Trigger when signal crosses from negative to positive.
+    Rising,
+    /// Trigger when signal crosses from positive to negative.
+    Falling,
+    /// Trigger on any sign transition.
+    Either,
+}
+
+impl ZcDirection {
+    /// True if a transition from `prev` to `curr` matches this direction.
+    pub fn crossed(&self, prev: f64, curr: f64) -> bool {
+        match self {
+            ZcDirection::Rising => prev < 0.0 && curr >= 0.0,
+            ZcDirection::Falling => prev > 0.0 && curr <= 0.0,
+            ZcDirection::Either => (prev < 0.0 && curr >= 0.0) || (prev > 0.0 && curr <= 0.0),
+        }
+    }
+}
+
 /// A block parameter value, converted from the JSON document by `simmodel`.
 /// Numbers, number arrays, strings and bools only — anything richer is a
 /// model error.
@@ -125,6 +147,26 @@ pub trait Block {
     /// This block's sample time.
     fn sample_time(&self) -> SampleTime {
         SampleTime::Continuous
+    }
+
+    /// Number of zero-crossing indicator signals this block produces.
+    fn n_zc(&self) -> usize {
+        0
+    }
+
+    /// Directions for each of this block's zero-crossing signals. Length equals `n_zc()`.
+    fn zc_directions(&self) -> &[ZcDirection] {
+        &[]
+    }
+
+    /// Evaluate this block's zero-crossing indicator signals into `zc` (length `n_zc()`).
+    fn zero_crossings(&self, _t: f64, _x: &[f64], _u: &[&SigVal], _zc: &mut [f64]) -> Result<(), SimError> {
+        Ok(())
+    }
+
+    /// Notification that zero-crossing signal `zc_idx` was crossed and located at `(t, x, u)`.
+    fn on_zc(&mut self, _t: f64, _x: &[f64], _u: &[&SigVal], _zc_idx: usize) -> Result<(), SimError> {
+        Ok(())
     }
 
     /// True if any output depends on the inputs at the same instant

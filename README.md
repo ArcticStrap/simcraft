@@ -1,4 +1,8 @@
-# SimCraft
+<div align="center">
+  <img src="assets/app-icon/simcraft-256.png" alt="Logo">
+</div>
+
+<h1 align="center">SimCraft</h1>
 
 SimCraft is a clean-room, open-source, Rust-native block-diagram modeling and
 simulation environment — the Simulink-class member of the ArtCraft family, and
@@ -144,7 +148,7 @@ ports, width/rate mismatches.
 ### The block library (staged)
 
 Current (~25): step, ramp, sine, constant, clock · scope, to-workspace ·
-gain, sum, product (`*`/`/` per port), abs, saturation, dead-zone, switch ·
+gain, sum, product (`*`/`/` per port), abs, saturation, dead-zone, relay, switch ·
 relational (`== ~= < <= > >=`), logical-operator (`and or xor nand nor
 not`) · integrator, derivative, transfer-fcn, PID (parallel form with
 derivative filter), transport-delay · unit-delay, zero-order-hold · mux,

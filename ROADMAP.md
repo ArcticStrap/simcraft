@@ -45,7 +45,7 @@ Each milestone ends green: `cargo xtask ci` + a demo model that proves the stage
   exactly on discrete sample hits and `tstop`. `sim.step` single-steps
   for debugging.
 - Multirate discrete scheduler, sample-time propagation, inherited `-1` rates
-- Zero-crossing detection + event location (step edges, relays)
+- **Zero-crossing done**: Hermite continuous extension interpolation for RK45, secant/bisection event localization, solver landing and `on_zc` mode triggering; `relay` block with hysteresis; Åström–Hägglund relay-feedback test demo model (`examples/relay_feedback.simcraft`).
 - Algebraic-loop detection + optional Newton iteration
 - **Done when**: rk45 with rtol=1e-4 on a stiff-ish demo takes <5% of euler's steps
   within tolerance; a relay-feedback demo reproduces its limit cycle; a mixed 1 ms/

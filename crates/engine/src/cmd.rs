@@ -362,4 +362,53 @@ mod tests {
             assert!(ids.contains(&want), "missing {want}");
         }
     }
+
+    #[test]
+    fn rk45_relay_feedback_limit_cycle() {
+        let text = include_str!("../../../examples/relay_feedback.simcraft");
+        let mut s = Session::new();
+        s.load_document(simmodel::Document::parse(text).unwrap()).unwrap();
+        let r = s.execute("sim.run", json!({})).unwrap();
+
+        let t: Vec<f64> = r["t"].as_array().unwrap().iter().filter_map(Json::as_f64).collect();
+        let y: Vec<f64> = r["out"]["y"]["y"].as_array().unwrap().iter().map(|row| row[0].as_f64().unwrap()).collect();
+        let u: Vec<f64> = r["out"]["u"]["y"].as_array().unwrap().iter().map(|row| row[0].as_f64().unwrap()).collect();
+
+        assert!((t.last().copied().unwrap_or(0.0) - 25.0).abs() < 1e-12);
+
+        // Count relay switches (transitions between +1 and -1)
+        let mut switches = 0;
+        let mut switch_times = Vec::new();
+        for i in 1..u.len() {
+            if (u[i] - u[i - 1]).abs() > 0.5 {
+                switches += 1;
+                if u[i] > 0.0 {
+                    // Rising edge of relay
+                    switch_times.push(t[i]);
+                }
+            }
+        }
+        // Over 25s with Tu ~ 3.63s, we expect ~13-14 half-cycle switches
+        assert!(switches >= 10, "expected at least 10 relay switches, got {switches}");
+
+        // In steady state (t >= 10s), check limit cycle amplitude and period
+        let mut steady_peak = 0.0f64;
+        for (ti, yi) in t.iter().zip(&y) {
+            if *ti >= 10.0 {
+                steady_peak = steady_peak.max(yi.abs());
+            }
+        }
+        // Describing function analysis predicts a ~ 4d/(pi * 8) ~ 0.16
+        assert!((0.10..=0.25).contains(&steady_peak), "steady peak {steady_peak} outside expected [0.10, 0.25]");
+
+        // Measure period from consecutive rising switch times after t=10s
+        let steady_switches: Vec<f64> = switch_times.into_iter().filter(|&ts| ts >= 10.0).collect();
+        assert!(steady_switches.len() >= 3, "expected at least 3 steady cycles");
+        for w in steady_switches.windows(2) {
+            let period = w[1] - w[0];
+            // Theoretical Tu = 2*pi / sqrt(3) ~ 3.63s without hysteresis;
+            // with hysteresis epsilon=0.05, extra phase lag increases period to ~4.32s.
+            assert!((period - 4.32).abs() < 0.2, "measured period {period} deviates from theoretical ~4.32s");
+        }
+    }
 }

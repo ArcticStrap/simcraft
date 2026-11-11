@@ -18,7 +18,7 @@
 //! exactly on discrete sample hits and on `tstop`.
 
 use crate::limits;
-use crate::{CompiledModel, Model, SigVal, SimError};
+use crate::{CompiledModel, Model, SigVal, SimError, ZcDirection};
 
 /// Solver selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -140,7 +140,10 @@ pub struct Sim {
     rejected: u64,
     finished: bool,
     t_log: Vec<f64>,
+    zc_prev: Vec<f64>,
 }
+
+type Rk45Attempt = (Vec<f64>, f64, Vec<f64>, Vec<f64>);
 
 impl Sim {
     /// Compile `model` and validate `cfg` — all failures surface here,
@@ -194,7 +197,32 @@ impl Sim {
         let out_bufs = comp.make_buffers();
         let x = comp.x0.clone();
         let h = cfg.dt;
-        Ok(Sim { model, comp, out_bufs, x, rates, hits, cfg, t: 0.0, step_idx: 0, h, accepted: 0, rejected: 0, finished: false, t_log: Vec::new() })
+        let zc_prev = vec![0.0; comp.total_zc];
+        let mut sim = Sim {
+            model,
+            comp,
+            out_bufs,
+            x,
+            rates,
+            hits,
+            cfg,
+            t: 0.0,
+            step_idx: 0,
+            h,
+            accepted: 0,
+            rejected: 0,
+            finished: false,
+            t_log: Vec::new(),
+            zc_prev,
+        };
+        sim.eval_outputs(0.0)?;
+        if sim.comp.total_zc > 0 {
+            let x0 = sim.x.clone();
+            let mut zc_init = vec![0.0; sim.comp.total_zc];
+            sim.eval_zero_crossings(0.0, &x0, &mut zc_init)?;
+            sim.zc_prev = zc_init;
+        }
+        Ok(sim)
     }
 
     /// The model being executed (block graph + live state).
@@ -215,6 +243,18 @@ impl Sim {
     /// Continuous state count of block `i` (0 if out of range).
     fn n_states_of(&self, i: usize) -> usize {
         self.model.blocks_ref(i).map(|b| b.n_states()).unwrap_or(0)
+    }
+
+    /// Zero-crossing direction for global signal `idx`.
+    fn zc_dir(&self, idx: usize) -> ZcDirection {
+        if let Some(&(b, local_zc)) = self.comp.zc_signals.get(idx) {
+            if let Some(blk) = self.model.blocks_ref(b) {
+                if let Some(&dir) = blk.zc_directions().get(local_zc) {
+                    return dir;
+                }
+            }
+        }
+        ZcDirection::Either
     }
 
     /// Evaluate all outputs at `t` against `self.x` in execution order.
@@ -262,6 +302,36 @@ impl Sim {
         })();
         self.x = saved;
         result
+    }
+
+    /// Evaluate all zero-crossing indicator signals at `(t, x)` into `zc`.
+    fn eval_zero_crossings(&self, t: f64, x: &[f64], zc: &mut [f64]) -> Result<(), SimError> {
+        for b in 0..self.model.len() {
+            let n_zc = self.model.blocks_ref(b).map(|blk| blk.n_zc()).unwrap_or(0);
+            if n_zc == 0 {
+                continue;
+            }
+            let off = self.comp.zc_offsets.get(b).copied().unwrap_or(0);
+            let n_st = self.n_states_of(b);
+            let st_off = self.comp.offsets.get(b).copied().unwrap_or(0);
+            let xs: &[f64] = x.get(st_off..st_off + n_st).unwrap_or(&[]);
+            let ins = inputs_of(&self.comp, &self.out_bufs, b);
+            if let Some(slice) = zc.get_mut(off..off + n_zc) {
+                if let Some(blk) = self.model.blocks_ref(b) {
+                    blk.zero_crossings(t, xs, &ins, slice)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Evaluate `outputs` for arbitrary candidate state `x` at `t`,
+    /// restoring `self.x` upon return.
+    fn eval_outputs_with_state(&mut self, t: f64, x: &[f64]) -> Result<(), SimError> {
+        let saved = std::mem::replace(&mut self.x, x.to_vec());
+        let res = self.eval_outputs(t);
+        self.x = saved;
+        res
     }
 
     /// Current simulation time.
@@ -429,6 +499,37 @@ impl Sim {
             }
             Solver::Rk45 => {}
         }
+        if self.comp.total_zc > 0 {
+            let t_next = t + h;
+            self.eval_outputs(t_next)?;
+            let mut z_new = vec![0.0; self.comp.total_zc];
+            let x_curr = self.x.clone();
+            self.eval_zero_crossings(t_next, &x_curr, &mut z_new)?;
+            let mut any_crossed = false;
+            for (idx, &(b, local_zc)) in self.comp.zc_signals.iter().enumerate() {
+                let dir = self.zc_dir(idx);
+                let z0 = self.zc_prev.get(idx).copied().unwrap_or(0.0);
+                let z1 = z_new.get(idx).copied().unwrap_or(0.0);
+                if dir.crossed(z0, z1) {
+                    any_crossed = true;
+                    let ins = inputs_of(&self.comp, &self.out_bufs, b);
+                    let n_st = self.n_states_of(b);
+                    let st_off = self.comp.offsets.get(b).copied().unwrap_or(0);
+                    let xs: &[f64] = self.x.get(st_off..st_off + n_st).unwrap_or(&[]);
+                    self.model.blocks_mut(b)?.on_zc(t_next, xs, &ins, local_zc)?;
+                }
+            }
+            if any_crossed {
+                self.eval_outputs(t_next)?;
+                let mut z_post = vec![0.0; self.comp.total_zc];
+                let x_curr = self.x.clone();
+                self.eval_zero_crossings(t_next, &x_curr, &mut z_post)?;
+                self.zc_prev = z_post;
+            } else {
+                self.zc_prev = z_new;
+            }
+            self.eval_outputs(t_next)?;
+        }
         Ok(())
     }
 
@@ -451,7 +552,7 @@ impl Sim {
             if h_t <= 0.0 {
                 return Err(SimError::Msg(format!("rk45 step collapsed at t={t}")));
             }
-            let (x_new, err) = self.rk45_attempt(t, h_t)?;
+            let (x_new, err, k1, k7) = self.rk45_attempt(t, h_t)?;
             // Controller: h · clamp(0.9·err^(−1/5), 0.2, 10); NaN errors
             // shrink hard rather than panic.
             let grow = if err.is_finite() && err > 0.0 {
@@ -462,9 +563,129 @@ impl Sim {
                 0.2
             };
             if err <= 1.0 {
+                // If the model declares zero crossings, check if any event occurred in (t, t + h_t].
+                if self.comp.total_zc > 0 {
+                    let mut z_new = vec![0.0; self.comp.total_zc];
+                    self.eval_outputs_with_state(t + h_t, &x_new)?;
+                    self.eval_zero_crossings(t + h_t, &x_new, &mut z_new)?;
+
+                    let mut crossing_signals = Vec::new();
+                    for (idx, &(_, _)) in self.comp.zc_signals.iter().enumerate() {
+                        let dir = self.zc_dir(idx);
+                        let z0 = self.zc_prev.get(idx).copied().unwrap_or(0.0);
+                        let z1 = z_new.get(idx).copied().unwrap_or(0.0);
+                        if dir.crossed(z0, z1) {
+                            crossing_signals.push(idx);
+                        }
+                    }
+
+                    if !crossing_signals.is_empty() {
+                        let x0 = self.x.clone();
+                        let mut earliest_t = t + h_t;
+                        let mut earliest_idx = crossing_signals[0];
+
+                        for &idx in &crossing_signals {
+                            let dir = self.zc_dir(idx);
+                            let mut t_lo = t;
+                            let mut t_hi = t + h_t;
+                            let mut z_lo = self.zc_prev.get(idx).copied().unwrap_or(0.0);
+                            let mut z_hi = z_new.get(idx).copied().unwrap_or(0.0);
+                            let tol = 1e-8 * t.abs().max(1.0);
+
+                            for _ in 0..25 {
+                                if (t_hi - t_lo).abs() <= tol || z_hi.abs() < 1e-12 {
+                                    break;
+                                }
+                                let span = t_hi - t_lo;
+                                let mut tau = t_lo - z_lo * span / (z_hi - z_lo);
+                                if !tau.is_finite() || tau < t_lo + 0.1 * span || tau > t_hi - 0.1 * span {
+                                    tau = 0.5 * (t_lo + t_hi);
+                                }
+                                let s = (tau - t) / h_t;
+                                let s2 = s * s;
+                                let s3 = s2 * s;
+                                let h1 = 1.0 - 3.0 * s2 + 2.0 * s3;
+                                let h2 = 3.0 * s2 - 2.0 * s3;
+                                let h3 = h_t * (s - 2.0 * s2 + s3);
+                                let h4 = h_t * (s3 - s2);
+                                let mut x_tau = vec![0.0; x0.len()];
+                                for (i, slot) in x_tau.iter_mut().enumerate() {
+                                    let x0_i = x0.get(i).copied().unwrap_or(0.0);
+                                    let xn_i = x_new.get(i).copied().unwrap_or(0.0);
+                                    let k1_i = k1.get(i).copied().unwrap_or(0.0);
+                                    let k7_i = k7.get(i).copied().unwrap_or(0.0);
+                                    *slot = h1 * x0_i + h2 * xn_i + h3 * k1_i + h4 * k7_i;
+                                }
+                                self.eval_outputs_with_state(tau, &x_tau)?;
+                                let mut z_buf = vec![0.0; self.comp.total_zc];
+                                self.eval_zero_crossings(tau, &x_tau, &mut z_buf)?;
+                                let z_tau = z_buf.get(idx).copied().unwrap_or(0.0);
+                                if dir.crossed(z_lo, z_tau) {
+                                    t_hi = tau;
+                                    z_hi = z_tau;
+                                } else {
+                                    t_lo = tau;
+                                    z_lo = z_tau;
+                                }
+                            }
+                            if t_hi < earliest_t {
+                                earliest_t = t_hi;
+                                earliest_idx = idx;
+                            }
+                        }
+
+                        let min_adv = self.time_tol().max(1e-12);
+                        let t_event = earliest_t.max(t + min_adv).min(self.cfg.tstop);
+
+                        // State at t_event
+                        let s = (t_event - t) / h_t;
+                        let s2 = s * s;
+                        let s3 = s2 * s;
+                        let h1 = 1.0 - 3.0 * s2 + 2.0 * s3;
+                        let h2 = 3.0 * s2 - 2.0 * s3;
+                        let h3 = h_t * (s - 2.0 * s2 + s3);
+                        let h4 = h_t * (s3 - s2);
+                        let mut x_event = vec![0.0; x0.len()];
+                        for (i, slot) in x_event.iter_mut().enumerate() {
+                            let x0_i = x0.get(i).copied().unwrap_or(0.0);
+                            let xn_i = x_new.get(i).copied().unwrap_or(0.0);
+                            let k1_i = k1.get(i).copied().unwrap_or(0.0);
+                            let k7_i = k7.get(i).copied().unwrap_or(0.0);
+                            *slot = h1 * x0_i + h2 * xn_i + h3 * k1_i + h4 * k7_i;
+                        }
+
+                        self.t = t_event;
+                        self.x = x_event;
+                        self.eval_outputs(t_event)?;
+
+                        let (b_star, local_zc) = self.comp.zc_signals[earliest_idx];
+                        let ins = inputs_of(&self.comp, &self.out_bufs, b_star);
+                        let n_st = self.n_states_of(b_star);
+                        let st_off = self.comp.offsets.get(b_star).copied().unwrap_or(0);
+                        let xs: &[f64] = self.x.get(st_off..st_off + n_st).unwrap_or(&[]);
+                        self.model.blocks_mut(b_star)?.on_zc(t_event, xs, &ins, local_zc)?;
+
+                        self.eval_outputs(t_event)?;
+                        let x_curr = self.x.clone();
+                        let mut zc_upd = vec![0.0; self.comp.total_zc];
+                        self.eval_zero_crossings(t_event, &x_curr, &mut zc_upd)?;
+                        self.zc_prev = zc_upd;
+
+                        self.h = (h_t * 0.5).clamp(hmin, hmax);
+                        return Ok(());
+                    }
+                }
+
                 self.x = x_new;
                 // Snap to the boundary the step was clamped to.
                 self.t = if h_t >= self.cfg.tstop - t { self.cfg.tstop } else { t + h_t };
+                if self.comp.total_zc > 0 {
+                    let x_curr = self.x.clone();
+                    self.eval_outputs(self.t)?;
+                    let mut zc_upd = vec![0.0; self.comp.total_zc];
+                    self.eval_zero_crossings(self.t, &x_curr, &mut zc_upd)?;
+                    self.zc_prev = zc_upd;
+                }
                 self.h = (h_t * grow).clamp(hmin, hmax);
                 return Ok(());
             }
@@ -483,9 +704,9 @@ impl Sim {
     }
 
     /// One Dormand–Prince 5(4) trial step of size `h` from `(t, x)`:
-    /// returns `(x5, scaled_err)` where `scaled_err` is the RMS of
+    /// returns `(x5, scaled_err, k1, k7)` where `scaled_err` is the RMS of
     /// `(x5 − x4) / (atol + rtol·max(|x|, |x5|))` — accept when `<= 1`.
-    fn rk45_attempt(&mut self, t: f64, h: f64) -> Result<(Vec<f64>, f64), SimError> {
+    fn rk45_attempt(&mut self, t: f64, h: f64) -> Result<Rk45Attempt, SimError> {
         // Dormand–Prince tableau (1980) — the classic published
         // coefficients, e.g. Hairer/Nørsett/Wanner §II.5 table 5.2.
         const A21: f64 = 1.0 / 5.0;
@@ -547,7 +768,7 @@ impl Sim {
             acc += q * q;
         }
         let err = if n == 0 { 0.0 } else { (acc / n as f64).sqrt() };
-        Ok((x5, err))
+        Ok((x5, err, k1, k7))
     }
 
     /// Run to `tstop`; returns time history and final state. Equivalent to
@@ -582,7 +803,7 @@ fn lincomb(x0: &[f64], h: f64, terms: &[(f64, &[f64])]) -> Vec<f64> {
 mod tests {
     use super::*;
     use crate::block::SampleTime;
-    use crate::{PortReq, SigMeta};
+    use crate::{Block, PortReq, SigMeta};
     use std::any::Any;
 
     /// dx = u (a raw integrator), one continuous state.
@@ -737,5 +958,128 @@ mod tests {
         assert!(Sim::new(decay_model(), SimConfig { solver: Solver::Rk45, dt: 0.1, tstop: 1.0, rtol: 0.0, ..SimConfig::default() }).is_err());
         assert!(Sim::new(decay_model(), SimConfig { solver: Solver::Rk45, dt: 0.1, tstop: 1.0, atol: -1.0, ..SimConfig::default() }).is_err());
         assert!(Sim::new(decay_model(), SimConfig { solver: Solver::Rk45, dt: 0.1, tstop: 1.0, min_step: -0.1, ..SimConfig::default() }).is_err());
+    }
+
+    struct ZeroCrossingWatcher {
+        threshold: f64,
+        triggered_at: std::cell::Cell<Option<f64>>,
+        dirs: [ZcDirection; 1],
+        reqs: [PortReq; 1],
+    }
+
+    impl ZeroCrossingWatcher {
+        fn new(threshold: f64) -> Self {
+            Self { threshold, triggered_at: std::cell::Cell::new(None), dirs: [ZcDirection::Falling], reqs: [PortReq::REAL_ANY] }
+        }
+    }
+
+    impl Block for ZeroCrossingWatcher {
+        fn inputs(&self) -> &[PortReq] {
+            &self.reqs
+        }
+        fn n_outputs(&self) -> usize {
+            1
+        }
+        fn resolve_out(&mut self, _p: usize, ins: &[Option<SigMeta>]) -> Result<SigMeta, SimError> {
+            Ok(ins.first().copied().flatten().unwrap_or(SigMeta::real(1)))
+        }
+        fn outputs(&mut self, _t: f64, _x: &[f64], u: &[&SigVal], y: &mut Vec<SigVal>) -> Result<(), SimError> {
+            if let Some(SigVal::Real(v)) = y.get_mut(0) {
+                if let Ok(uu) = crate::in_real(u, 0) {
+                    *v = uu.to_vec();
+                }
+            }
+            Ok(())
+        }
+        fn has_feedthrough(&self) -> bool {
+            true
+        }
+        fn n_zc(&self) -> usize {
+            1
+        }
+        fn zc_directions(&self) -> &[ZcDirection] {
+            &self.dirs
+        }
+        fn zero_crossings(&self, _t: f64, _x: &[f64], u: &[&SigVal], zc: &mut [f64]) -> Result<(), SimError> {
+            if let Ok(uu) = crate::in_real(u, 0) {
+                if let Some(val) = uu.first() {
+                    zc[0] = val - self.threshold;
+                }
+            }
+            Ok(())
+        }
+        fn on_zc(&mut self, t: f64, _x: &[f64], _u: &[&SigVal], _zc_idx: usize) -> Result<(), SimError> {
+            self.triggered_at.set(Some(t));
+            Ok(())
+        }
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+    }
+
+    #[test]
+    fn rk45_locates_zero_crossing_precisely() {
+        // Linear ramp x(t) = 1.0 - t (derivatives = -1, x0 = 1).
+        // ZeroCrossingWatcher triggers when x crosses 0.35 falling.
+        // Expected crossing time: t* = 1.0 - 0.35 = 0.65.
+        struct RampIntegrator(f64);
+        impl Block for RampIntegrator {
+            fn inputs(&self) -> &[PortReq] {
+                &[]
+            }
+            fn n_outputs(&self) -> usize {
+                1
+            }
+            fn resolve_out(&mut self, _p: usize, _ins: &[Option<SigMeta>]) -> Result<SigMeta, SimError> {
+                Ok(SigMeta::real(1))
+            }
+            fn outputs(&mut self, _t: f64, x: &[f64], _u: &[&SigVal], y: &mut Vec<SigVal>) -> Result<(), SimError> {
+                if let Some(SigVal::Real(v)) = y.get_mut(0) {
+                    v[0] = x[0];
+                }
+                Ok(())
+            }
+            fn derivatives(&mut self, _t: f64, _x: &[f64], _u: &[&SigVal], dx: &mut [f64]) -> Result<(), SimError> {
+                dx[0] = -1.0;
+                Ok(())
+            }
+            fn n_states(&self) -> usize {
+                1
+            }
+            fn get_x(&self, x: &mut [f64]) -> Result<(), SimError> {
+                x[0] = self.0;
+                Ok(())
+            }
+            fn set_x(&mut self, x: &[f64]) -> Result<(), SimError> {
+                self.0 = x[0];
+                Ok(())
+            }
+            fn has_feedthrough(&self) -> bool {
+                false
+            }
+            fn as_any(&self) -> &dyn Any {
+                self
+            }
+            fn as_any_mut(&mut self) -> &mut dyn Any {
+                self
+            }
+        }
+
+        let mut m = Model::new();
+        let integ = m.add_block("integ", Box::new(RampIntegrator(1.0))).unwrap();
+        let watcher = m.add_block("watcher", Box::new(ZeroCrossingWatcher::new(0.35))).unwrap();
+        m.add_wire(integ, 0, watcher, 0).unwrap();
+
+        // Run RK45 with coarse initial step h=0.2 (which spans across t=0.65)
+        let cfg = SimConfig { solver: Solver::Rk45, dt: 0.2, tstop: 1.0, rtol: 1e-6, atol: 1e-8, ..SimConfig::default() };
+        let mut sim = Sim::new(m, cfg).unwrap();
+        sim.run().unwrap();
+
+        let w = sim.model().blocks_ref(watcher).unwrap().as_any().downcast_ref::<ZeroCrossingWatcher>().unwrap();
+        let t_hit = w.triggered_at.get().expect("zero crossing should have triggered");
+        assert!((t_hit - 0.65).abs() < 1e-5, "expected event at t=0.65, got {t_hit}");
     }
 }

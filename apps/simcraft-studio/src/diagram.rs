@@ -43,7 +43,7 @@ pub struct Diagram {
 pub const GROUPS: &[(&str, &[&str])] = &[
     ("Sources", &["constant", "step", "sine", "ramp", "clock"]),
     ("Sinks", &["scope", "to_workspace"]),
-    ("Math", &["gain", "sum", "product", "abs", "saturation", "dead_zone", "switch"]),
+    ("Math", &["gain", "sum", "product", "abs", "saturation", "dead_zone", "relay", "switch"]),
     ("Logic", &["relational", "logical_operator"]),
     ("Continuous", &["integrator", "derivative", "transfer_fcn", "pid", "transport_delay"]),
     ("Discrete", &["unit_delay", "zero_order_hold"]),
@@ -86,6 +86,12 @@ pub fn default_params(type_name: &str) -> Params {
         "saturation" | "dead_zone" => {
             num("lower", -0.5);
             num("upper", 0.5);
+        }
+        "relay" => {
+            num("on_switch", 1.0);
+            num("off_switch", -1.0);
+            num("on_output", 1.0);
+            num("off_output", 0.0);
         }
         "relational" => {
             p.insert("op".into(), Param::Str("<=".into()));
@@ -400,6 +406,7 @@ mod tests {
             ("gain", (1, 1)),
             ("sum", (2, 1)),
             ("switch", (3, 1)),
+            ("relay", (1, 1)),
             ("integrator", (1, 1)),
             ("transfer_fcn", (1, 1)),
             ("unit_delay", (1, 1)),

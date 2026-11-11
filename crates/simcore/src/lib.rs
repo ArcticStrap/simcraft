@@ -19,7 +19,7 @@ mod model;
 mod signal;
 mod sim;
 
-pub use block::{Block, BlockFactory, Param, Params, SampleTime};
+pub use block::{Block, BlockFactory, Param, Params, SampleTime, ZcDirection};
 pub use model::{CompiledModel, Model, Wire};
 pub use signal::{in_real, DType, DTypeReq, PortReq, SigMeta, SigVal, WidthReq};
 pub use sim::{Sim, SimConfig, SimOut, Solver};
@@ -78,6 +78,8 @@ pub mod limits {
     pub const MAX_STATES: usize = 1_000_000;
     /// Max elements of one signal.
     pub const MAX_SIGNAL_WIDTH: usize = 1_000_000;
+    /// Max zero-crossing indicator signals in one model.
+    pub const MAX_ZC: usize = 100_000;
     /// Max fixed-step iterations in one `sim.run`.
     pub const MAX_STEPS: u64 = 50_000_000;
     /// Max samples one sink will record.

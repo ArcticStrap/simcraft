@@ -266,6 +266,29 @@ impl Model {
             }
         }
 
+        // --- zero-crossing signal layout ---
+        let mut zc_offsets = Vec::with_capacity(n);
+        let mut zc_signals = Vec::new();
+        let mut total_zc = 0usize;
+        for (i, b) in self.blocks.iter().enumerate() {
+            zc_offsets.push(total_zc);
+            let n_zc = b.n_zc();
+            let dirs = b.zc_directions();
+            if dirs.len() != n_zc {
+                return Err(SimError::BadParam {
+                    block: self.name(i),
+                    msg: format!("block declares {n_zc} zero crossings but {} directions", dirs.len()),
+                });
+            }
+            for local_idx in 0..n_zc {
+                zc_signals.push((i, local_idx));
+            }
+            total_zc = total_zc.saturating_add(n_zc);
+        }
+        if total_zc > limits::MAX_ZC {
+            return Err(SimError::TooLarge(format!("{total_zc} zero crossings (max {})", limits::MAX_ZC)));
+        }
+
         // Initial state vector.
         let mut x0 = vec![0.0; n_states];
         for (i, b) in self.blocks.iter().enumerate() {
@@ -288,6 +311,9 @@ impl Model {
             x0,
             discrete,
             loggable: (0..n).filter(|&i| self.blocks[i].n_outputs() == 0).collect(),
+            zc_signals,
+            zc_offsets,
+            total_zc,
         })
     }
 
@@ -319,6 +345,12 @@ pub struct CompiledModel {
     pub discrete: Vec<(usize, f64)>,
     /// Blocks with no output ports — sinks that get the per-step `log` call.
     pub loggable: Vec<usize>,
+    /// Zero-crossing descriptors: `(block_index, local_zc_index)`.
+    pub zc_signals: Vec<(usize, usize)>,
+    /// `zc_offsets[b]` = start of block b's zero-crossing signals in the global zc array.
+    pub zc_offsets: Vec<usize>,
+    /// Total count of zero-crossing signals across all blocks.
+    pub total_zc: usize,
 }
 
 impl CompiledModel {

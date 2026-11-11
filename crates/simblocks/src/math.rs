@@ -2,7 +2,7 @@
 //! plus the comparison blocks Relational and LogicalOperator, which emit
 //! `Bool` signals (e.g. to drive a Switch control port).
 
-use simcore::{in_real, Block, Params, PortReq, SigMeta, SigVal, SimError};
+use simcore::{in_real, Block, Params, PortReq, SigMeta, SigVal, SimError, ZcDirection};
 
 use crate::{block_any, params};
 
@@ -399,6 +399,162 @@ impl Block for DeadZone {
     block_any!();
 }
 
+/// `relay {on_switch, off_switch, on_output, off_output, initial_output}` —
+/// hysteresis relay block. Switches output to `on_output` when input rises
+/// above `on_switch`, and to `off_output` when input falls below `off_switch`.
+/// Emits zero-crossing indicator signals for solver event localization.
+pub struct Relay {
+    on_switch: f64,
+    off_switch: f64,
+    on_out: f64,
+    off_out: f64,
+    initial_state: bool,
+    initialized: bool,
+    is_on: Vec<bool>,
+    zc_dirs: Vec<ZcDirection>,
+    reqs: [PortReq; 1],
+}
+
+impl Relay {
+    pub fn new(p: &Params) -> Result<Self, SimError> {
+        params::check_keys(
+            p,
+            &[
+                "on_switch",
+                "on_switch_value",
+                "off_switch",
+                "off_switch_value",
+                "on_output",
+                "on_output_value",
+                "off_output",
+                "off_output_value",
+                "initial_output",
+            ],
+        )?;
+        let on_switch = if p.contains_key("on_switch_value") { params::num(p, "on_switch_value", 1.0)? } else { params::num(p, "on_switch", 1.0)? };
+        let off_switch =
+            if p.contains_key("off_switch_value") { params::num(p, "off_switch_value", -1.0)? } else { params::num(p, "off_switch", -1.0)? };
+        let on_out = if p.contains_key("on_output_value") { params::num(p, "on_output_value", 1.0)? } else { params::num(p, "on_output", 1.0)? };
+        let off_out = if p.contains_key("off_output_value") { params::num(p, "off_output_value", 0.0)? } else { params::num(p, "off_output", 0.0)? };
+        if on_switch < off_switch {
+            return Err(SimError::Msg("relay `on_switch` must be >= `off_switch`".into()));
+        }
+        let initial_out = params::num(p, "initial_output", off_out)?;
+        let initial_state = (initial_out - on_out).abs() < (initial_out - off_out).abs();
+        Ok(Relay {
+            on_switch,
+            off_switch,
+            on_out,
+            off_out,
+            initial_state,
+            initialized: false,
+            is_on: vec![initial_state],
+            zc_dirs: vec![if initial_state { ZcDirection::Falling } else { ZcDirection::Rising }],
+            reqs: [PortReq::REAL_ANY],
+        })
+    }
+}
+
+impl Block for Relay {
+    fn inputs(&self) -> &[PortReq] {
+        &self.reqs
+    }
+
+    fn n_outputs(&self) -> usize {
+        1
+    }
+
+    fn resolve_out(&mut self, _p: usize, ins: &[Option<SigMeta>]) -> Result<SigMeta, SimError> {
+        let m = ins.first().copied().flatten().unwrap_or(SigMeta::real(1));
+        let w = m.width;
+        if self.is_on.len() != w {
+            self.is_on = vec![self.initial_state; w];
+            self.zc_dirs = vec![if self.initial_state { ZcDirection::Falling } else { ZcDirection::Rising }; w];
+            self.initialized = false;
+        }
+        Ok(m)
+    }
+
+    fn outputs(&mut self, _t: f64, _x: &[f64], u: &[&SigVal], y: &mut Vec<SigVal>) -> Result<(), SimError> {
+        let uu = in_real(u, 0)?;
+        if !self.initialized {
+            for (i, &val) in uu.iter().enumerate() {
+                if val >= self.on_switch {
+                    if let Some(on) = self.is_on.get_mut(i) {
+                        *on = true;
+                    }
+                } else if val <= self.off_switch {
+                    if let Some(on) = self.is_on.get_mut(i) {
+                        *on = false;
+                    }
+                }
+                if let Some(dir) = self.zc_dirs.get_mut(i) {
+                    *dir = if self.is_on.get(i).copied().unwrap_or(false) { ZcDirection::Falling } else { ZcDirection::Rising };
+                }
+            }
+            self.initialized = true;
+        }
+        if let Some(SigVal::Real(v)) = y.get_mut(0) {
+            for (i, o) in v.iter_mut().enumerate() {
+                let on = self.is_on.get(i).copied().unwrap_or(false);
+                *o = if on { self.on_out } else { self.off_out };
+            }
+        }
+        Ok(())
+    }
+
+    fn update(&mut self, _t: f64, u: &[&SigVal]) -> Result<(), SimError> {
+        let uu = in_real(u, 0)?;
+        for (i, &val) in uu.iter().enumerate() {
+            let curr = self.is_on.get(i).copied().unwrap_or(false);
+            let next = if curr { val > self.off_switch } else { val >= self.on_switch };
+            if next != curr {
+                if let Some(on) = self.is_on.get_mut(i) {
+                    *on = next;
+                }
+                if let Some(dir) = self.zc_dirs.get_mut(i) {
+                    *dir = if next { ZcDirection::Falling } else { ZcDirection::Rising };
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn n_zc(&self) -> usize {
+        self.is_on.len()
+    }
+
+    fn zc_directions(&self) -> &[ZcDirection] {
+        &self.zc_dirs
+    }
+
+    fn zero_crossings(&self, _t: f64, _x: &[f64], u: &[&SigVal], zc: &mut [f64]) -> Result<(), SimError> {
+        let uu = in_real(u, 0)?;
+        for (i, (slot, &val)) in zc.iter_mut().zip(uu.iter()).enumerate() {
+            let on = self.is_on.get(i).copied().unwrap_or(false);
+            *slot = if on { val - self.off_switch } else { val - self.on_switch };
+        }
+        Ok(())
+    }
+
+    fn on_zc(&mut self, _t: f64, _x: &[f64], _u: &[&SigVal], zc_idx: usize) -> Result<(), SimError> {
+        if let Some(on) = self.is_on.get_mut(zc_idx) {
+            *on = !*on;
+        }
+        if let Some(dir) = self.zc_dirs.get_mut(zc_idx) {
+            let on = self.is_on.get(zc_idx).copied().unwrap_or(false);
+            *dir = if on { ZcDirection::Falling } else { ZcDirection::Rising };
+        }
+        Ok(())
+    }
+
+    fn has_feedthrough(&self) -> bool {
+        true
+    }
+
+    block_any!();
+}
+
 /// `relational {op}` — two inputs, elementwise comparison, bool output.
 /// `op` is one of `==`, `~=`, `<`, `<=`, `>`, `>=` (default `<=`). A
 /// width-1 input broadcasts against a wider other input.
@@ -703,5 +859,85 @@ mod tests {
         assert!(r.resolve_out(0, &metas).is_err());
         let ok = [Some(SigMeta::real(3)), Some(SigMeta::real(1))];
         assert_eq!(r.resolve_out(0, &ok).unwrap(), SigMeta { width: 3, dtype: simcore::DType::Bool });
+    }
+
+    #[test]
+    fn relay_hysteresis_and_zc() {
+        let mut p = BTreeMap::new();
+        p.insert("on_switch".to_string(), simcore::Param::Num(1.0));
+        p.insert("off_switch".to_string(), simcore::Param::Num(-1.0));
+        p.insert("on_output".to_string(), simcore::Param::Num(1.0));
+        p.insert("off_output".to_string(), simcore::Param::Num(-1.0));
+        let mut r = Relay::new(&p).unwrap();
+
+        // Initialize with u = 0.0 (inside hysteresis band)
+        let out = run1(&mut r, &[SigVal::scalar(0.0)]);
+        assert_eq!(out, vec![-1.0]);
+        assert_eq!(r.n_zc(), 1);
+        assert_eq!(r.zc_directions(), &[ZcDirection::Rising]);
+
+        let mut zc = vec![0.0];
+        r.zero_crossings(0.0, &[], &[&SigVal::scalar(0.0)], &mut zc).unwrap();
+        assert_eq!(zc, vec![-1.0]); // 0.0 - 1.0 = -1.0
+
+        // u rises to 1.5 -> crosses zero rising
+        r.zero_crossings(0.0, &[], &[&SigVal::scalar(1.5)], &mut zc).unwrap();
+        assert_eq!(zc, vec![0.5]); // 1.5 - 1.0 = 0.5
+        assert!(ZcDirection::Rising.crossed(-1.0, 0.5));
+
+        // Solver signals zero crossing
+        r.on_zc(0.1, &[], &[&SigVal::scalar(1.0)], 0).unwrap();
+        assert_eq!(r.zc_directions(), &[ZcDirection::Falling]);
+
+        // Output is now on_output (1.0)
+        let out = run1(&mut r, &[SigVal::scalar(1.5)]);
+        assert_eq!(out, vec![1.0]);
+
+        // Indicator is now u - off_switch = u - (-1.0)
+        r.zero_crossings(0.1, &[], &[&SigVal::scalar(1.5)], &mut zc).unwrap();
+        assert_eq!(zc, vec![2.5]);
+
+        // u drops into hysteresis band (0.0): output remains 1.0
+        let out = run1(&mut r, &[SigVal::scalar(0.0)]);
+        assert_eq!(out, vec![1.0]);
+        r.zero_crossings(0.2, &[], &[&SigVal::scalar(0.0)], &mut zc).unwrap();
+        assert_eq!(zc, vec![1.0]); // still positive
+
+        // u drops below off_switch (-1.5) -> crosses zero falling
+        r.zero_crossings(0.3, &[], &[&SigVal::scalar(-1.5)], &mut zc).unwrap();
+        assert_eq!(zc, vec![-0.5]); // -1.5 - (-1.0) = -0.5
+        assert!(ZcDirection::Falling.crossed(1.0, -0.5));
+
+        // Solver signals zero crossing
+        r.on_zc(0.3, &[], &[&SigVal::scalar(-1.0)], 0).unwrap();
+        assert_eq!(r.zc_directions(), &[ZcDirection::Rising]);
+
+        // Output switches back to off_output (-1.0)
+        let out = run1(&mut r, &[SigVal::scalar(-1.5)]);
+        assert_eq!(out, vec![-1.0]);
+    }
+
+    #[test]
+    fn relay_rejects_inverted_thresholds() {
+        let mut p = BTreeMap::new();
+        p.insert("on_switch".to_string(), simcore::Param::Num(-1.0));
+        p.insert("off_switch".to_string(), simcore::Param::Num(1.0));
+        assert!(Relay::new(&p).is_err());
+    }
+
+    #[test]
+    fn relay_vector_broadcast() {
+        let mut p = BTreeMap::new();
+        p.insert("on_switch".to_string(), simcore::Param::Num(0.5));
+        p.insert("off_switch".to_string(), simcore::Param::Num(-0.5));
+        p.insert("on_output".to_string(), simcore::Param::Num(10.0));
+        p.insert("off_output".to_string(), simcore::Param::Num(-10.0));
+        let mut r = Relay::new(&p).unwrap();
+
+        let ins = [SigVal::Real(vec![1.0, -1.0])];
+        let out = run1(&mut r, &ins);
+        assert_eq!(out, vec![10.0, -10.0]);
+        assert_eq!(r.n_zc(), 2);
+        assert_eq!(r.zc_directions(), &[ZcDirection::Falling, ZcDirection::Rising]);
     }
 }

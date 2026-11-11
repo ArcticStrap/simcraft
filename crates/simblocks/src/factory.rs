@@ -4,8 +4,8 @@
 use simcore::{Block, BlockFactory, Params, SimError};
 
 use crate::{
-    Abs, Clock, Constant, DeadZone, Demux, Derivative, Gain, Integrator, LogicalOperator, Mux, PidController, Product, Ramp, Relational, Saturation,
-    Scope, Sine, Step, Sum, Switch, ToWorkspace, TransferFcn, TransportDelay, UnitDelay, ZeroOrderHold,
+    Abs, Clock, Constant, DeadZone, Demux, Derivative, Gain, Integrator, LogicalOperator, Mux, PidController, Product, Ramp, Relational, Relay,
+    Saturation, Scope, Sine, Step, Sum, Switch, ToWorkspace, TransferFcn, TransportDelay, UnitDelay, ZeroOrderHold,
 };
 
 /// One catalog row: document type name + what the palette shows.
@@ -29,6 +29,7 @@ const CATALOG: &[BlockInfo] = &[
     BlockInfo { type_name: "abs", label: "Abs" },
     BlockInfo { type_name: "saturation", label: "Saturation" },
     BlockInfo { type_name: "dead_zone", label: "Dead Zone" },
+    BlockInfo { type_name: "relay", label: "Relay" },
     BlockInfo { type_name: "switch", label: "Switch" },
     BlockInfo { type_name: "relational", label: "Relational Operator" },
     BlockInfo { type_name: "logical_operator", label: "Logical Operator" },
@@ -67,6 +68,7 @@ impl BlockFactory for Factory {
             "abs" => Box::new(Abs::new(params).map_err(err)?),
             "saturation" => Box::new(Saturation::new(params).map_err(err)?),
             "dead_zone" => Box::new(DeadZone::new(params).map_err(err)?),
+            "relay" => Box::new(Relay::new(params).map_err(err)?),
             "switch" => Box::new(Switch::new(params).map_err(err)?),
             "relational" => Box::new(Relational::new(params).map_err(err)?),
             "logical_operator" => Box::new(LogicalOperator::new(params).map_err(err)?),
