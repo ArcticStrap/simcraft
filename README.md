@@ -29,16 +29,27 @@ convention below.
 SimCraft Studio provides a native block-diagram editor, solver engine, block parameter inspector, and live waveform scope dock:
 
 <div align="center">
-  <img src="assets/screenshots/studio_relay_feedback.png" alt="SimCraft Studio - Åström–Hägglund Relay Feedback Auto-Tuning with RK45 Zero-Crossing Detection" width="100%">
+  <img src="docs/screenshots/studio_relay_feedback.png" alt="SimCraft Studio - Åström–Hägglund Relay Feedback Auto-Tuning with RK45 Zero-Crossing Detection" width="100%">
   <p><em>SimCraft Studio simulating the Åström–Hägglund relay feedback auto-tuner (<code>examples/relay_feedback.simcraft</code>) on plant \(G(s) = \frac{1}{(s+1)^3}\) using adaptive RK45 with continuous extension zero-crossing detection, relay hysteresis parameter inspection, and real-time limit-cycle oscillation waveforms.</em></p>
 </div>
 
 <br>
 
 <div align="center">
-  <img src="assets/screenshots/studio_pendulum.png" alt="SimCraft Studio - Linearized Pendulum Harmonic Oscillator" width="100%">
+  <img src="docs/screenshots/studio_pendulum.png" alt="SimCraft Studio - Linearized Pendulum Harmonic Oscillator" width="100%">
   <p><em>Linearized harmonic pendulum model (<code>examples/pendulum.simcraft</code>) running under classical RK4 with continuous state integrator inspection and scope trace.</em></p>
 </div>
+
+## Documentation
+
+Detailed documentation and guides are available in [`docs/`](docs/):
+
+- **[System Architecture](docs/architecture.md)** — Crate layering (L1–L7), execution pipeline, algebraic loop detection, and safety guarantees.
+- **[Standard Block Catalog](docs/blocks.md)** — Complete catalog of 25+ blocks across Sources, Sinks, Math, Discontinuities, Logic, Continuous, Discrete, and Routing.
+- **[ODE Solvers & Zero-Crossing](docs/solvers.md)** — Euler, RK4, adaptive Dormand–Prince RK45, continuous extension, and root-finding event localization.
+- **[File Format Specification](docs/file-format.md)** — `.simcraft` JSON document format, parameter typing, wiring topology, and layout metadata.
+- **[MatCraft Interconnection](docs/matcraft-interconnection.md)** — Workspace bridge, M-code automation (`sim`, `set_param`, `get_param`), and parameter sweeps.
+- **[SimCraft Studio User Guide](docs/studio.md)** — Canvas interaction gestures, wiring, inspector parameters, and headless CLI capture flags.
 
 ## Why it exists
 
